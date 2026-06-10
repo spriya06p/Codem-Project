@@ -93,10 +93,10 @@ function Extension() {
      <s-button
   slot="primary-action"
   onClick={() => {
-    window.open(
-      "https://admin.shopify.com/store/cafe-a1oxf6lg/apps/codem-product-edit/app/product-editor",
-      "_blank"
-    );
+   window.open(
+  `https://admin.shopify.com/store/cafe-a1oxf6lg/apps/codem-product-edit/app/product-editor?id=${encodeURIComponent(product.id)}`,
+  "_blank"
+);
   }}
 >
   Edit Media & SEO
