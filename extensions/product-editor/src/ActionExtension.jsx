@@ -1,107 +1,93 @@
 import "@shopify/ui-extensions/preact";
+import { APP_HANDLE } from "../config";
 import { render } from "preact";
 import { useEffect, useState } from "preact/hooks";
+
+// Admin Extension — injects Edit button into Shopify product page
+// Target: admin.product-details.action.render (spec 1.3)
 
 export default async () => {
   render(<Extension />, document.body);
 };
 
 function Extension() {
-  const { i18n, close, data, extension: { target } } = shopify;
+  const { close, data } = shopify;
 
   const [product, setProduct] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
+  // Fetch product handle from Shopify using the product ID
+  // Shopify gives us data.selected[0].id automatically
   useEffect(() => {
-    (async function getProductInfo() {
+    (async function fetchProduct() {
       try {
-        const getProductQuery = {
-          query: `
-            query Product($id: ID!) {
-              product(id: $id) {
-                id
-                title
-                handle
+        setLoading(true);
+
+        const res = await fetch("shopify:admin/api/graphql.json", {
+          method: "POST",
+          body: JSON.stringify({
+            query: `
+              query GetProduct($id: ID!) {
+                product(id: $id) {
+                  id
+                  title
+                  handle
+                }
               }
-            }
-          `,
-          variables: {
-            id: data.selected[0].id,
-          },
-        };
+            `,
+            variables: { id: data.selected[0].id },
+          }),
+        });
 
-        const res = await fetch(
-          "shopify:admin/api/graphql.json",
-          {
-            method: "POST",
-            body: JSON.stringify(getProductQuery),
-          }
-        );
+        if (!res.ok) throw new Error("Network error");
 
-        if (!res.ok) {
-          console.error("Network Error");
-          return;
-        }
-
-        const productData = await res.json();
-
-        console.log(
-          "PRODUCT DATA:",
-          productData.data.product
-        );
-
-        setProduct(productData.data.product);
-      } catch (error) {
-        console.error(error);
+        const json = await res.json();
+        setProduct(json.data.product);
+      } catch (err) {
+        setError("Could not load product.");
+      } finally {
+        setLoading(false);
       }
     })();
   }, [data.selected]);
 
- const handleEdit = () => {
-  console.log("BUTTON CLICKED");
+  // Navigate to edit page and close modal (spec 1.3)
+  const handleEdit = () => {
+    if (!product) return;
 
-  const url =
-    "https://YOUR-CLOUDFLARE-URL/app/product-editor?id=" +
-    product.id;
+    // Navigate to our edit page using APP_HANDLE from config (never inlined)
+    shopify.navigation.navigate(
+      `/admin/apps/${APP_HANDLE}/app/products/${product.handle}/edit`
+    );
 
-  console.log(url);
-
-  open(url);
-};
+    // Close modal immediately after navigation (spec 1.3)
+    close();
+  };
 
   return (
     <s-admin-action>
       <s-stack direction="block">
-
-        <s-text type="strong">
-          {i18n.translate("welcome", { target })}
-        </s-text>
-
-        <s-text>
-          Product Title:
-          {" "}
-          {product?.title || "Loading..."}
-        </s-text>
-
-        <s-text>
-          Product Handle:
-          {" "}
-          {product?.handle || "Loading..."}
-        </s-text>
-
+        {loading && <s-text>Loading product...</s-text>}
+        {error && <s-text>{error}</s-text>}
+        {product && (
+          <>
+            <s-text type="strong">{product.title}</s-text>
+            <s-text>Handle: {product.handle}</s-text>
+          </>
+        )}
       </s-stack>
 
-     <s-button
-  slot="primary-action"
-  onClick={() => {
-   window.open(
-  `https://admin.shopify.com/store/cafe-a1oxf6lg/apps/codem-product-edit/app/product-editor?id=${encodeURIComponent(product.id)}`,
-  "_blank"
-);
-  }}
->
-  Edit Media & SEO
-</s-button>
+      {/* Primary action: Edit button */}
+      <s-button
+        slot="primary-action"
+        disabled={!product || loading}
+        onClick={handleEdit}
+      >
+        Edit Media & SEO
+      </s-button>
 
+      {/* Secondary action: Close */}
       <s-button
         slot="secondary-actions"
         onClick={() => close()}
