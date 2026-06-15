@@ -137,36 +137,99 @@ export async function action({ request }) {
 
       // ── Mutation 2a: productCreateMedia — URL-based new images ──
       if (hasUrlImages) {
-        const res = await admin.graphql(
-          `
-          mutation productCreateMedia($productId: ID!, $media: [CreateMediaInput!]!) {
-            productCreateMedia(productId: $productId, media: $media) {
-              media { id alt }
-              mediaUserErrors { field message }
+        // Fetch existing Shopify images to prevent server-side URL duplicates
+        const existingRes = await admin.graphql(
+          `query ProductMedia($id: ID!) {
+            product(id: $id) {
+              media(first: 250) {
+                nodes {
+                  ... on MediaImage { image { url } }
+                }
+              }
             }
-          }
-          `,
-          {
-            variables: {
-              productId,
-              media: newUrlImages.map((img) => ({
-                originalSource: img.url,
-                alt: img.alt,
-                mediaContentType: "IMAGE",
-              })),
-            },
-          }
+          }`,
+          { variables: { id: productId } }
         );
-        const result = await res.json();
-        const errors = result.data?.productCreateMedia?.mediaUserErrors;
-        if (errors?.length > 0) {
-          return { error: "Unable to update product right now. Please try again.", tab: "media" };
+        const existingResult = await existingRes.json();
+        const existingUrls = new Set(
+          (existingResult.data?.product?.media?.nodes || [])
+            .map((n) => n.image?.url)
+            .filter(Boolean)
+            .map((u) => u.split("?")[0].toLowerCase()) // strip query params
+        );
+
+        // Only add URLs not already in Shopify
+        const uniqueUrlImages = newUrlImages.filter((img) => {
+          const normalized = img.url.split("?")[0].toLowerCase();
+          return !existingUrls.has(normalized);
+        });
+
+        if (uniqueUrlImages.length > 0) {
+          const res = await admin.graphql(
+            `
+            mutation productCreateMedia($productId: ID!, $media: [CreateMediaInput!]!) {
+              productCreateMedia(productId: $productId, media: $media) {
+                media { id alt }
+                mediaUserErrors { field message }
+              }
+            }
+            `,
+            {
+              variables: {
+                productId,
+                media: uniqueUrlImages.map((img) => ({
+                  originalSource: img.url,
+                  alt: img.alt,
+                  mediaContentType: "IMAGE",
+                })),
+              },
+            }
+          );
+          const result = await res.json();
+          const errors = result.data?.productCreateMedia?.mediaUserErrors;
+          if (errors?.length > 0) {
+            return { error: "Unable to update product right now. Please try again.", tab: "media" };
+          }
         }
       }
 
       // ── Mutation 2b: File upload — staged upload then productCreateMedia ──
       if (hasFileImages) {
+        // Fetch existing images for file duplicate check using filename hint
+        const existingRes = await admin.graphql(
+          `query ProductMedia($id: ID!) {
+            product(id: $id) {
+              media(first: 250) {
+                nodes {
+                  ... on MediaImage { image { url } }
+                }
+              }
+            }
+          }`,
+          { variables: { id: productId } }
+        );
+        const existingResult = await existingRes.json();
+        const existingFileNames = new Set(
+          (existingResult.data?.product?.media?.nodes || [])
+            .map((n) => {
+              const url = n.image?.url || "";
+              // Extract filename from CDN URL
+              const parts = url.split("/");
+              const filename = parts[parts.length - 1].split("?")[0];
+              // Remove Shopify size suffix like _800x from filename
+              return filename.replace(/_\d+x\d*(\.\w+)$/, "$1").toLowerCase();
+            })
+            .filter(Boolean)
+        );
+
         for (const { file, alt } of newFileImages) {
+          // Check if a file with same name already exists in Shopify
+          const normalizedName = file.name.toLowerCase();
+          if (existingFileNames.has(normalizedName)) {
+            // Skip — already exists
+            continue;
+          }
+
           // Step 1: Get a staged upload URL from Shopify
           const stageRes = await admin.graphql(
             `
@@ -360,6 +423,12 @@ export async function action({ request }) {
           error: "Unable to update product right now. Please try again.",
           tab: "seo",
         };
+      }
+
+      // If handle changed redirect to new URL
+      if (handleChanged) {
+        const { redirect } = await import("react-router");
+        return redirect(`/app/products/${newHandle}/edit?tab=seo&saved=true`);
       }
 
       return { success: true, tab: "seo" };

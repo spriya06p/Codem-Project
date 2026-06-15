@@ -18,13 +18,19 @@ export default function SeoTab({ product }) {
 
   // ── LAZY LOAD — only runs on first mount (AC07) ────────
   useEffect(() => {
+    // AbortController prevents double-fetch in React 18 Strict Mode
+    const controller = new AbortController();
+    const signal = controller.signal;
+
     async function fetchSeoData() {
       try {
         setLoading(true);
         setLoadError(null);
 
-        // FIX: use product.handle (not product.id) in the URL
-        const res = await fetch(`/app/products/${product.handle}/seo-data`);
+        const res = await fetch(`/app/products/${product.handle}/seo-data`, { signal });
+
+        // If aborted (Strict Mode cleanup), stop silently
+        if (signal.aborted) return;
 
         if (!res.ok) {
           throw new Error("Unable to load SEO data right now. Please try again.");
@@ -32,7 +38,6 @@ export default function SeoTab({ product }) {
 
         const data = await res.json();
 
-        // E-08: server returned an error object
         if (data.error) {
           throw new Error("Unable to load SEO data right now. Please try again.");
         }
@@ -45,15 +50,20 @@ export default function SeoTab({ product }) {
         setSeoDescription(description);
         setSeoHandle(handle);
         setOriginal({ title, description, handle });
-      } catch {
+      } catch (err) {
+        // Ignore abort errors — not a real failure
+        if (err.name === "AbortError") return;
         // E-08 exact message
         setLoadError("Unable to load SEO data right now. Please try again.");
       } finally {
-        setLoading(false);
+        if (!signal.aborted) setLoading(false);
       }
     }
 
     fetchSeoData();
+
+    // Cleanup: abort the fetch if component unmounts (Strict Mode or tab switch)
+    return () => controller.abort();
   }, []); // empty deps = only on first mount = lazy load (AC07)
 
   // ── DIFF CHECK ─────────────────────────────────────────

@@ -12,15 +12,13 @@ export default function MediaTab({ product }) {
     product.media.nodes.map((img, index) => ({
       id: img.id,
       url: img.image?.url,
-      alt: img.alt || product.title, // default alt = product title (spec)
+      alt: img.alt || product.title,
       position: index,
       isNew: false,
       toDelete: false,
-      isFile: false,
     }))
   );
 
-  // Store originals for diff check
   const [origImages] = useState(
     product.media.nodes.map((img, index) => ({
       id: img.id,
@@ -29,17 +27,6 @@ export default function MediaTab({ product }) {
     }))
   );
 
-  // Track which URLs already exist in Shopify (for duplicate prevention)
-  // We store Shopify image URLs so we never add the same URL twice
-  const [existingShopifyUrls] = useState(
-    new Set(
-      product.media.nodes
-        .map((img) => img.image?.url)
-        .filter(Boolean)
-    )
-  );
-
-  // Featured image — first image is default (spec)
   const [featuredId, setFeaturedId] = useState(
     product.media.nodes[0]?.id || null
   );
@@ -60,7 +47,7 @@ export default function MediaTab({ product }) {
     );
   };
 
-  // E-10: Cannot remove the only featured image
+  // E-10 guard on remove
   const handleRemove = (id) => {
     if (id === featuredId && visibleImages.length === 1) {
       alert("At least one image is required before removing the featured image.");
@@ -69,52 +56,51 @@ export default function MediaTab({ product }) {
     setImages((prev) =>
       prev.map((img) => (img.id === id ? { ...img, toDelete: true } : img))
     );
-    // Auto-assign next image as featured
     if (id === featuredId) {
       const next = visibleImages.find((img) => img.id !== id);
       if (next) setFeaturedId(next.id);
     }
   };
 
-  // Add image by URL
+  // Normalize URL for comparison — strips query params and Shopify size suffixes
+  const normalizeUrl = (u) => {
+    try {
+      const parsed = new URL(u);
+      let path = parsed.origin + parsed.pathname;
+      path = path.replace(/_\d+x\d*(\.\w+)$/, "$1").replace(/_master(\.\w+)$/, "$1");
+      return path.toLowerCase();
+    } catch {
+      return u.toLowerCase();
+    }
+  };
+
+  // Add image by URL — spec: media.newUrls
   const handleAddUrl = () => {
     if (!newUrl.trim()) return;
-
     if (atMaxImages) {
       alert("Maximum 250 images allowed.");
       return;
     }
-
-    // Validate URL format
     try {
       new URL(newUrl);
     } catch {
       alert("Please enter a valid URL.");
       return;
     }
-
-    const trimmedUrl = newUrl.trim();
-
-    // DUPLICATE CHECK 1: Already exists in Shopify
-    if (existingShopifyUrls.has(trimmedUrl)) {
-      alert("This image already exists in Shopify.");
-      return;
-    }
-
-    // DUPLICATE CHECK 2: Already added in this session (not yet saved)
-    const alreadyPending = images.some(
-      (img) => img.isNew && !img.toDelete && img.url === trimmedUrl
+    // Duplicate check — normalize URLs before comparing
+    const normalizedNew = normalizeUrl(newUrl.trim());
+    const alreadyExists = images.some(
+      (img) => !img.toDelete && normalizeUrl(img.url) === normalizedNew
     );
-    if (alreadyPending) {
+    if (alreadyExists) {
       alert("This image has already been added.");
       return;
     }
-
     setImages((prev) => [
       ...prev,
       {
         id: `new-${Date.now()}`,
-        url: trimmedUrl,
+        url: newUrl.trim(),
         alt: product.title,
         position: prev.length,
         isNew: true,
@@ -125,7 +111,7 @@ export default function MediaTab({ product }) {
     setNewUrl("");
   };
 
-  // Add image by file upload
+  // Add image by file upload — spec: media.newUrls "Valid URL or file upload"
   const handleFileUpload = (e) => {
     const files = Array.from(e.target.files);
     if (!files.length) return;
@@ -134,17 +120,16 @@ export default function MediaTab({ product }) {
 
     files.forEach((file) => {
       if (!allowed.includes(file.type)) {
-        alert(`${file.name} is not supported. Use JPG, PNG, GIF or WebP.`);
+        alert(`${file.name} is not a supported image type. Use JPG, PNG, GIF or WebP.`);
         return;
       }
       if (atMaxImages) {
         alert("Maximum 250 images allowed.");
         return;
       }
-      // Duplicate file check — same name + size = same file
+      // Duplicate check — same filename + same size = same file
       const alreadyExists = images.some(
         (img) =>
-          img.isNew &&
           !img.toDelete &&
           img.isFile &&
           img.file?.name === file.name &&
@@ -154,7 +139,7 @@ export default function MediaTab({ product }) {
         alert(`"${file.name}" has already been added.`);
         return;
       }
-
+      // Create a local preview URL — also store the file object for upload
       const previewUrl = URL.createObjectURL(file);
       setImages((prev) => [
         ...prev,
@@ -166,11 +151,12 @@ export default function MediaTab({ product }) {
           isNew: true,
           toDelete: false,
           isFile: true,
-          file,
+          file: file,
         },
       ]);
     });
 
+    // Reset the file input so the same file can be re-selected if needed
     e.target.value = "";
   };
 
@@ -190,11 +176,12 @@ export default function MediaTab({ product }) {
   };
 
   // ── SAVE WITH DIFF CHECK ───────────────────────────────
-  const handleSave = () => {
+  const handleSave = async () => {
     const mediaUpdates = [];
     const removeIds = [];
-    const newUrlImages = [];
-    const newFileImages = [];
+    const newUrlImages = [];  // images added by URL
+    const newFileImages = []; // images added by file upload
+    const reorderMoves = [];  // images that were dragged to new positions
 
     for (const img of images) {
       if (img.isNew && !img.toDelete) {
@@ -209,25 +196,29 @@ export default function MediaTab({ product }) {
         removeIds.push(img.id);
         continue;
       }
-      // Diff check — only include if alt or position changed
       const orig = origImages.find((o) => o.id === img.id);
-      if (orig && (img.alt !== orig.alt || img.position !== orig.position)) {
-        mediaUpdates.push({ id: img.id, alt: img.alt });
+      if (orig) {
+        // Alt text changed → productUpdateMedia
+        if (img.alt !== orig.alt) {
+          mediaUpdates.push({ id: img.id, alt: img.alt });
+        }
+        // Position changed → productReorderMedia (separate from alt text)
+        if (img.position !== orig.position) {
+          reorderMoves.push({ id: img.id, newPosition: String(img.position) });
+        }
       }
     }
 
-    // Featured changed only if it's an existing Shopify image
     const featuredChanged =
-      featuredId !== origFeaturedId &&
-      featuredId !== null &&
-      !featuredId.startsWith("new-");
+      featuredId !== origFeaturedId && !featuredId?.startsWith("new-");
 
-    // NO-OP: nothing changed — fire zero mutations (AC05)
+    // NO-OP check — AC05
     if (
       mediaUpdates.length === 0 &&
       removeIds.length === 0 &&
       newUrlImages.length === 0 &&
       newFileImages.length === 0 &&
+      reorderMoves.length === 0 &&
       !featuredChanged
     ) {
       alert("No changes to save.");
@@ -237,12 +228,19 @@ export default function MediaTab({ product }) {
     const formData = new FormData();
     formData.append("_tab", "media");
     formData.append("productId", product.id);
-    formData.append("handle", product.handle); // ← send REAL handle for E-02 check
+    formData.append("handle", product.id);
     formData.append("featuredId", featuredId || "");
     formData.append("featuredChanged", featuredChanged ? "yes" : "no");
     formData.append("mediaUpdates", JSON.stringify(mediaUpdates));
     removeIds.forEach((id) => formData.append("removeIds", id));
+
+    // URL-based new images — sent as JSON with alt text
     formData.append("newImages", JSON.stringify(newUrlImages));
+
+    // Reorder moves — sent separately for productReorderMedia mutation
+    formData.append("reorderMoves", JSON.stringify(reorderMoves));
+
+    // File-based new images — append each file + its alt text
     newFileImages.forEach((img, i) => {
       formData.append(`uploadFile_${i}`, img.file);
       formData.append(`uploadAlt_${i}`, img.alt);
@@ -255,7 +253,7 @@ export default function MediaTab({ product }) {
   // ── RENDER ─────────────────────────────────────────────
   return (
     <div>
-      {/* Header + Save */}
+      {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
         <h2 style={{ margin: 0, fontSize: "18px" }}>Media Management</h2>
         <button
@@ -279,7 +277,7 @@ export default function MediaTab({ product }) {
       {/* Success */}
       {actionData?.success && actionData?.tab === "media" && (
         <div style={{ background: "#f0fff4", border: "1px solid #b7ebc8", borderRadius: "6px", padding: "10px 16px", marginBottom: "16px", color: "#007a33", fontSize: "14px" }}>
-          {actionData.noop ? "ℹ️ No changes to save." : "✅ Media saved successfully!"}
+          ✅ Media saved successfully!
         </div>
       )}
 
@@ -293,17 +291,17 @@ export default function MediaTab({ product }) {
       {/* Max images warning */}
       {atMaxImages && (
         <div style={{ background: "#fffbe6", border: "1px solid #ffe58f", borderRadius: "6px", padding: "10px 16px", marginBottom: "16px", color: "#ad6800", fontSize: "14px" }}>
-          ⚠️ Maximum 250 images reached. Remove one before adding more.
+          ⚠️ Maximum of 250 images reached. Remove an image before adding more.
         </div>
       )}
 
-      {/* Add Image Section */}
+      {/* ── ADD IMAGE SECTION ── */}
       <div style={{ marginBottom: "24px", padding: "16px", background: "#f9f9f9", borderRadius: "8px", border: "1px solid #eee" }}>
         <label style={{ fontWeight: "600", display: "block", marginBottom: "12px", fontSize: "14px" }}>
           Add Image
         </label>
 
-        {/* File upload */}
+        {/* File upload — spec: "Valid URL or file upload" */}
         <div style={{ marginBottom: "12px" }}>
           <label style={{ fontSize: "13px", color: "#555", display: "block", marginBottom: "6px" }}>
             Upload from computer:
@@ -317,7 +315,7 @@ export default function MediaTab({ product }) {
             style={{ fontSize: "14px", cursor: atMaxImages ? "not-allowed" : "pointer" }}
           />
           <p style={{ fontSize: "12px", color: "#999", marginTop: "4px" }}>
-            JPG, PNG, GIF, WebP. Multiple files allowed.
+            JPG, PNG, GIF, WebP supported. Multiple files allowed.
           </p>
         </div>
 
@@ -373,7 +371,7 @@ export default function MediaTab({ product }) {
         </div>
       </div>
 
-      {/* Image Grid */}
+      {/* ── IMAGE GRID ── */}
       {visibleImages.length === 0 ? (
         <p style={{ color: "#666", textAlign: "center", padding: "40px" }}>
           No images. Add one above.
@@ -410,7 +408,7 @@ export default function MediaTab({ product }) {
                 </span>
               )}
 
-              {/* Image */}
+              {/* Image preview */}
               <img
                 src={image.url}
                 alt={image.alt}
@@ -442,7 +440,6 @@ export default function MediaTab({ product }) {
 
               {/* Buttons */}
               <div style={{ display: "flex", gap: "6px" }}>
-                {/* Set Featured — only for existing Shopify images */}
                 {image.id !== featuredId && !image.isNew && (
                   <button
                     onClick={() => setFeaturedId(image.id)}
