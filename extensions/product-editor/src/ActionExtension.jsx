@@ -16,9 +16,6 @@ function Extension() {
   const [product, setProduct] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-
-  // Fetch product handle from Shopify using the product ID
-  // Shopify gives us data.selected[0].id automatically
   useEffect(() => {
     (async function fetchProduct() {
       try {
@@ -51,17 +48,11 @@ function Extension() {
       }
     })();
   }, [data.selected]);
-
-  // Navigate to edit page and close modal (spec 1.3)
   const handleEdit = () => {
     if (!product) return;
-
-    // Navigate to our edit page using APP_HANDLE from config (never inlined)
     shopify.navigation.navigate(
       `/admin/apps/${APP_HANDLE}/app/products/${product.handle}/edit`
     );
-
-    // Close modal immediately after navigation (spec 1.3)
     close();
   };
 
