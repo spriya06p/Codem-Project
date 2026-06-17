@@ -1,19 +1,10 @@
 import { useEffect } from "react";
 import PropTypes from "prop-types";
 
-// ─── SEO TAB ──────────────────────────────────────────────
-// Lazy loads SEO data on first mount (AC07).
-// All state lives in parent via formState/dispatch (spec 1.5).
-// No local save button — Save/Discard live in ProductEditLayout.
-
 export default function SeoTab({ product, formState, dispatch }) {
   const { seoTitle, seoDescription, seoHandle, seoLoaded, seoLoading, seoLoadError } = formState.seo;
-
-  // ── LAZY LOAD — only runs on first mount (AC07) ────────
-  // Only fetches if SEO data hasn't been loaded yet
   useEffect(() => {
-    if (seoLoaded) return; // already loaded — don't refetch
-
+    if (seoLoaded) return;
     const controller = new AbortController();
     const signal = controller.signal;
 
@@ -40,9 +31,7 @@ export default function SeoTab({ product, formState, dispatch }) {
 
     fetchSeoData();
     return () => controller.abort();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // empty deps = only on first mount = lazy load (AC07)
-
+  }, []);
   // URL handle — only allow lowercase letters, numbers, hyphens (spec)
   const handleHandleChange = (value) => {
     dispatch({ type: "SEO_HANDLE_CHANGE", value: value.toLowerCase().replace(/[^a-z0-9-]/g, "") });

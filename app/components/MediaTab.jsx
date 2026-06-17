@@ -1,26 +1,30 @@
-import { useRef } from "react";
+import { useRef, useEffect } from "react";
 import PropTypes from "prop-types";
 
 // ─── MEDIA TAB ────────────────────────────────────────────
 // All state is managed by parent (route.jsx) via formState/dispatch.
-// This component only renders UI and calls dispatch to update shared state.
 // No local save button — Save/Discard live in ProductEditLayout (spec 1.5).
 
 export default function MediaTab({ product, formState, dispatch }) {
   const { images, featuredId, newUrl } = formState.media;
 
-  // localStorage helpers for file upload duplicate tracking
-  const storageKey = `media_uploads_${product.id}`;
+  // ── localStorage helpers for file upload duplicate tracking ──
+  const fileStorageKey = `media_uploads_${product.id}`;
+
   const getStoredUploads = () => {
     try {
-      const raw = localStorage.getItem(storageKey);
+      const raw = localStorage.getItem(fileStorageKey);
       return raw ? JSON.parse(raw) : [];
-    } catch { return []; }
+    } catch (_e) { return []; }
   };
 
-  const uploadedFileKeys = useRef(
-    new Set(getStoredUploads().map((e) => e.key))
-  );
+  const uploadedFileKeys = useRef(new Set());
+
+  useEffect(() => {
+    const stored = getStoredUploads();
+    uploadedFileKeys.current = new Set(stored.map((e) => e.key));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const registerUpload = (filename, size) => {
     const key = `${filename.toLowerCase()}__${size}`;
@@ -28,10 +32,10 @@ export default function MediaTab({ product, formState, dispatch }) {
     try {
       const stored = getStoredUploads();
       if (!stored.find((e) => e.key === key)) {
-        stored.push({ key, mediaId: null });
-        localStorage.setItem(storageKey, JSON.stringify(stored));
+        stored.push({ key });
+        localStorage.setItem(fileStorageKey, JSON.stringify(stored));
       }
-    } catch (_e) { return []; }
+    } catch (_e) { /* localStorage may not be available */ }
   };
 
   const unregisterUpload = (filename, size) => {
@@ -39,15 +43,55 @@ export default function MediaTab({ product, formState, dispatch }) {
     uploadedFileKeys.current.delete(key);
     try {
       const stored = getStoredUploads().filter((e) => e.key !== key);
-      localStorage.setItem(storageKey, JSON.stringify(stored));
-    } catch (_e) {return [];}
+      localStorage.setItem(fileStorageKey, JSON.stringify(stored));
+    } catch (_e) { /* localStorage may not be available */ }
+  };
+
+  // ── localStorage helpers for URL-based image duplicate tracking ──
+  // Same pattern as file uploads — survives page reload / re-navigation
+  const urlStorageKey = `media_url_uploads_${product.id}`;
+
+  const getStoredUrls = () => {
+    try {
+      const raw = localStorage.getItem(urlStorageKey);
+      return raw ? JSON.parse(raw) : [];
+    } catch (_e) { return []; }
+  };
+
+  const addedUrlKeys = useRef(new Set());
+
+  useEffect(() => {
+    const stored = getStoredUrls();
+    addedUrlKeys.current = new Set(stored.map((e) => e.url.toLowerCase()));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const registerUrl = (url) => {
+    const normalized = url.trim().toLowerCase();
+    addedUrlKeys.current.add(normalized);
+    try {
+      const stored = getStoredUrls();
+      if (!stored.find((e) => e.url.toLowerCase() === normalized)) {
+        stored.push({ url: url.trim() });
+        localStorage.setItem(urlStorageKey, JSON.stringify(stored));
+      }
+    } catch (_e) { /* localStorage may not be available */ }
+  };
+
+  const unregisterUrl = (url) => {
+    const normalized = url.trim().toLowerCase();
+    addedUrlKeys.current.delete(normalized);
+    try {
+      const stored = getStoredUrls().filter((e) => e.url.toLowerCase() !== normalized);
+      localStorage.setItem(urlStorageKey, JSON.stringify(stored));
+    } catch (_e) { /* localStorage may not be available */ }
   };
 
   // ── COMPUTED ──────────────────────────────────────────
   const visibleImages = images.filter((img) => !img.toDelete);
   const atMaxImages = visibleImages.length >= 250;
 
-  // ── HANDLERS — dispatch to shared parent state ────────
+  // ── HANDLERS ──────────────────────────────────────────
 
   const handleAltChange = (id, value) => {
     dispatch({ type: "MEDIA_ALT_CHANGE", id, value });
@@ -60,8 +104,14 @@ export default function MediaTab({ product, formState, dispatch }) {
       return;
     }
     const img = images.find((i) => i.id === id);
+    // If removing a file image, unregister from localStorage
     if (img?.isFile && img?.file) {
       unregisterUpload(img.file.name, img.file.size);
+    }
+    // If removing a URL-based image, unregister its URL too
+    // so user can re-add it later if they change their mind
+    if (img && !img.isFile && img.isNew) {
+      unregisterUrl(img.url);
     }
     dispatch({ type: "MEDIA_REMOVE", id });
   };
@@ -78,14 +128,30 @@ export default function MediaTab({ product, formState, dispatch }) {
       alert("Please enter a valid URL.");
       return;
     }
+
     const trimmed = newUrl.trim();
-    const alreadyExists = images.some(
-      (img) => !img.toDelete && img.url === trimmed
+    const normalized = trimmed.toLowerCase();
+
+    // Duplicate check 1 — already added in a previous session (localStorage)
+    // This survives Save + state reset + page reload
+    if (addedUrlKeys.current.has(normalized)) {
+      alert("This image has already been added to this product.");
+      return;
+    }
+
+    // Duplicate check 2 — already pending in this session (not yet saved)
+    const alreadyPending = images.some(
+      (img) => !img.toDelete && img.url.toLowerCase() === normalized
     );
-    if (alreadyExists) {
+    if (alreadyPending) {
       alert("This image has already been added.");
       return;
     }
+
+    // Register immediately — before save — so reload protection works
+    // even if user navigates away before saving
+    registerUrl(trimmed);
+
     dispatch({ type: "MEDIA_ADD_URL", url: trimmed, alt: product.title });
   };
 
@@ -103,11 +169,16 @@ export default function MediaTab({ product, formState, dispatch }) {
         alert("Maximum 250 images allowed.");
         return;
       }
+
       const fileKey = `${file.name.toLowerCase()}__${file.size}`;
+
+      // Duplicate check 1 — already uploaded in a previous session (localStorage)
       if (uploadedFileKeys.current.has(fileKey)) {
         alert(`"${file.name}" was already uploaded to this product.`);
         return;
       }
+
+      // Duplicate check 2 — already pending in this session (not yet saved)
       const alreadyPending = images.some(
         (img) =>
           !img.toDelete &&
@@ -119,25 +190,15 @@ export default function MediaTab({ product, formState, dispatch }) {
         alert(`"${file.name}" has already been added.`);
         return;
       }
+
+      // Register immediately — before save — so reload protection works
+      registerUpload(file.name, file.size);
+
       const previewUrl = URL.createObjectURL(file);
       dispatch({ type: "MEDIA_ADD_FILE", file, previewUrl, alt: product.title });
     });
     e.target.value = "";
   };
-
-  // Register files in localStorage when save is triggered
-  // Called by parent before submit
-  const registerAllPendingFiles = () => {
-    images
-      .filter((img) => img.isNew && !img.toDelete && img.isFile && img.file)
-      .forEach((img) => registerUpload(img.file.name, img.file.size));
-  };
-
-  // Expose register function to parent via ref-like prop pattern
-  // Parent calls this before submitting formData
-  if (typeof formState.media._registerFiles === "function") {
-    formState.media._registerFiles(registerAllPendingFiles);
-  }
 
   // Drag to reorder
   const handleDragStart = (index) => {
@@ -147,8 +208,6 @@ export default function MediaTab({ product, formState, dispatch }) {
   const handleDrop = (dropIndex) => {
     dispatch({ type: "MEDIA_DRAG_DROP", dropIndex });
   };
-
-  // const dragIndex = formState.media.dragIndex;
 
   // ── RENDER ────────────────────────────────────────────
   return (
