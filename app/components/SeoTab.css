@@ -1,0 +1,146 @@
+.seo-tab-wrapper {
+  padding: 10px;
+  font-family: sans-serif;
+}
+
+.seo-tab-wrapper h2 {
+  font-size: 18px;
+  margin-bottom: 20px;
+  margin-top: 0;
+}
+.seo-tab-wrapper .loading-box {
+  text-align: center;
+  padding: 60px;
+  color: #666;
+  font-size: 14px;
+}
+.seo-tab-wrapper .error-box {
+  background: #fff0f0;
+  border: 1px solid #ffcccc;
+  border-radius: 6px;
+  padding: 16px;
+  color: #cc0000;
+  font-size: 14px;
+}
+
+.seo-tab-wrapper .error-box button {
+  margin-left: 12px;
+  padding: 4px 12px;
+  font-size: 13px;
+  cursor: pointer;
+  border-radius: 4px;
+  border: 1px solid #cc0000;
+  background: white;
+  color: #cc0000;
+}
+
+.seo-tab-wrapper .error-box button:hover {
+  background: #fff0f0;
+}
+.seo-tab-wrapper .form-field {
+  margin-bottom: 20px;
+}
+
+.seo-tab-wrapper .form-field-last {
+  margin-bottom: 28px;
+}
+
+.seo-tab-wrapper .form-field label,
+.seo-tab-wrapper .form-field-last label {
+  font-weight: 600;
+  display: block;
+  margin-bottom: 6px;
+  font-size: 14px;
+  color: #333;
+}
+
+.seo-tab-wrapper .optional-text {
+  color: #999;
+  font-weight: 400;
+  font-size: 14px;
+}
+
+.seo-tab-wrapper .required-text {
+  color: #cc0000;
+  font-weight: 400;
+  font-size: 14px;
+}
+
+.seo-tab-wrapper .form-field input[type="text"],
+.seo-tab-wrapper .form-field-last input[type="text"] {
+  display: block;
+  width: 100%;
+  padding: 9px 12px;
+  border-radius: 6px;
+  border: 1px solid #ccc;
+  font-size: 14px;
+  box-sizing: border-box;
+  margin: 0;
+  background: white;
+  color: #333;
+}
+
+.seo-tab-wrapper .form-field input[type="text"]:focus,
+.seo-tab-wrapper .form-field-last input[type="text"]:focus {
+  outline: none;
+  border-color: #008060;
+}
+
+.seo-tab-wrapper .input-error {
+  border: 1px solid #cc0000 !important;
+}
+
+.seo-tab-wrapper .form-field textarea {
+  display: block;
+  width: 100%;
+  padding: 9px 12px;
+  border-radius: 6px;
+  border: 1px solid #ccc;
+  font-size: 14px;
+  box-sizing: border-box;
+  resize: vertical;
+  margin: 0;
+  background: white;
+  color: #333;
+  font-family: sans-serif;
+}
+
+.seo-tab-wrapper .form-field textarea:focus {
+  outline: none;
+  border-color: #008060;
+}
+
+.seo-tab-wrapper .readonly-input {
+  display: block;
+  width: 100%;
+  padding: 9px 12px;
+  border-radius: 6px;
+  border: 1px solid #eee !important;
+  font-size: 14px;
+  background: #f5f5f5 !important;
+  color: #888 !important;
+  box-sizing: border-box;
+  margin: 0;
+}
+.seo-tab-wrapper .hint-text {
+  font-size: 12px;
+  color: #999;
+  margin-top: 4px;
+  margin-bottom: 0;
+  display: block;
+}
+.seo-tab-wrapper .hint-text-warning {
+  font-size: 12px;
+  color: #cc6600;
+  margin-top: 4px;
+  margin-bottom: 0;
+  display: block;
+}
+
+.seo-tab-wrapper .error-text {
+  font-size: 12px;
+  color: #cc0000;
+  margin-top: 4px;
+  margin-bottom: 0;
+  display: block;
+}

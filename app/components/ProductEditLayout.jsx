@@ -1,4 +1,5 @@
 import PropTypes from "prop-types";
+import "./ProductEditLayout.css";
 export default function ProductEditLayout({
   product,
   activeTab,
@@ -11,116 +12,73 @@ export default function ProductEditLayout({
   savedViaRedirect,
   children,
 }) {
+  const statusMessage = isDirty ? "⚠️ You have unsaved changes" : "No unsaved changes";
+  const saveButtonLabel = isSaving ? "Saving..." : "Save";
+  const buttonsDisabled = !isDirty || isSaving;
+
   return (
-    <div style={{ fontFamily: "sans-serif", maxWidth: "960px", margin: "0 auto", padding: "24px" }}>
-      <h1 style={{ marginBottom: "4px", fontSize: "22px" }}>Product Media & SEO</h1>
-      <p style={{ color: "#666", marginBottom: "20px", fontSize: "14px" }}>
+    <div className="layout-wrapper">
+      <h1>Product Media &amp; SEO</h1>
+      <p className="product-subtitle">
         Editing: <strong>{product.title}</strong>
       </p>
-      <div style={{
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center",
-        padding: "12px 16px",
-        background: "#f9f9f9",
-        border: "1px solid #ddd",
-        borderRadius: "8px",
-        marginBottom: "20px",
-        position: "sticky",
-        top: "0",
-        zIndex: 10,
-      }}>
-        <div style={{ fontSize: "13px", color: isDirty ? "#cc6600" : "#999" }}>
-          {isDirty ? "⚠️ You have unsaved changes" : "No unsaved changes"}
-        </div>
+      <div className="save-bar">
+        <span className={"save-bar-status" + (isDirty ? " has-changes" : "")}>
+          {statusMessage}
+        </span>
 
-        <div style={{ display: "flex", gap: "8px" }}>
+        <div className="save-bar-buttons">
           <button
+            className="btn-discard"
             onClick={onDiscard}
-            disabled={!isDirty || isSaving}
-            style={{
-              padding: "8px 20px",
-              background: "white",
-              color: !isDirty || isSaving ? "#aaa" : "#333",
-              border: `1px solid ${!isDirty || isSaving ? "#ddd" : "#ccc"}`,
-              borderRadius: "6px",
-              cursor: !isDirty || isSaving ? "not-allowed" : "pointer",
-              fontWeight: "600",
-              fontSize: "14px",
-            }}
+            disabled={buttonsDisabled}
           >
             Discard
           </button>
+
           <button
+            className="btn-save"
             onClick={onSave}
-            disabled={!isDirty || isSaving}
-            style={{
-              padding: "8px 24px",
-              background: !isDirty || isSaving ? "#ccc" : "#008060",
-              color: "white",
-              border: "none",
-              borderRadius: "6px",
-              cursor: !isDirty || isSaving ? "not-allowed" : "pointer",
-              fontWeight: "600",
-              fontSize: "14px",
-            }}
+            disabled={buttonsDisabled}
           >
-            {isSaving ? "Saving..." : "Save"}
+            {saveButtonLabel}
           </button>
         </div>
       </div>
       {savedViaRedirect && (
-        <div style={{ background: "#f0fff4", border: "1px solid #b7ebc8", borderRadius: "6px", padding: "10px 16px", marginBottom: "16px", color: "#007a33", fontSize: "14px" }}>
+        <div className="banner-success">
           ✅ Changes saved successfully!
         </div>
       )}
-      {actionData?.success && !actionData?.noop && (
-        <div style={{ background: "#f0fff4", border: "1px solid #b7ebc8", borderRadius: "6px", padding: "10px 16px", marginBottom: "16px", color: "#007a33", fontSize: "14px" }}>
+      {actionData && actionData.success && !actionData.noop && (
+        <div className="banner-success">
           ✅ Changes saved successfully!
         </div>
       )}
-      {actionData?.error && (
-        <div style={{ background: "#fff0f0", border: "1px solid #ffcccc", borderRadius: "6px", padding: "10px 16px", marginBottom: "16px", color: "#cc0000", fontSize: "14px" }}>
+      {actionData && actionData.error && (
+        <div className="banner-error">
           ❌ {actionData.error}
         </div>
       )}
-      <div style={{ display: "flex", gap: "8px", marginBottom: "0" }}>
+      <div className="tab-buttons">
         <button
+          className={"tab-btn" + (activeTab === "media" ? " active" : "")}
           onClick={() => onTabChange("media")}
-          style={{
-            padding: "10px 28px",
-            background: activeTab === "media" ? "#008060" : "#f0f0f0",
-            color: activeTab === "media" ? "white" : "#333",
-            border: "none",
-            borderBottom: activeTab === "media" ? "3px solid #005c45" : "3px solid transparent",
-            borderRadius: "6px 6px 0 0",
-            cursor: "pointer",
-            fontWeight: "600",
-            fontSize: "14px",
-          }}
         >
           Media
         </button>
         <button
+          className={"tab-btn" + (activeTab === "seo" ? " active" : "")}
           onClick={() => onTabChange("seo")}
-          style={{
-            padding: "10px 28px",
-            background: activeTab === "seo" ? "#008060" : "#f0f0f0",
-            color: activeTab === "seo" ? "white" : "#333",
-            border: "none",
-            borderBottom: activeTab === "seo" ? "3px solid #005c45" : "3px solid transparent",
-            borderRadius: "6px 6px 0 0",
-            cursor: "pointer",
-            fontWeight: "600",
-            fontSize: "14px",
-          }}
         >
           SEO
         </button>
+
       </div>
-      <div style={{ border: "1px solid #ddd", borderRadius: "0 6px 6px 6px", padding: "24px", background: "white" }}>
+      <div className="tab-content">
         {children}
       </div>
+
     </div>
   );
 }

@@ -1,34 +1,52 @@
 import { authenticate } from "../shopify.server";
 
-// Lazy-load SEO data route — called only when SEO tab is first clicked (AC07)
-// File: app/routes/app.products.$handle.seo-data.jsx
+// ─── SEO DATA LOADER ──────────────────────────────────────
+// This is a separate route used only for lazy loading SEO data.
+// It is called by SeoTab when the user clicks the SEO tab for the first time.
+// URL: /app/products/:handle/seo-data
+//
+// Why a separate route?
+// The main loader never fetches SEO data (AC07 - lazy load requirement).
+// So SeoTab calls this route using fetch() to get SEO data on demand.
 
 export async function loader({ request, params }) {
+
+  // Step 1: Check if the user is logged into Shopify
   let admin;
   try {
     const auth = await authenticate.admin(request);
     admin = auth.admin;
-  } catch {
-    return new Response(
-      JSON.stringify({ error: "Unable to load SEO data right now. Please try again." }),
-      { status: 401, headers: { "Content-Type": "application/json" } }
-    );
+  } catch (error) {
+    // User is not authenticated — return E-08 error as JSON
+    const errorBody = JSON.stringify({
+      error: "Unable to load SEO data right now. Please try again.",
+    });
+    return new Response(errorBody, {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 
-  const { handle } = params;
+  // Step 2: Get the product handle from the URL
+  // Example: /app/products/red-shirt/seo-data → handle = "red-shirt"
+  const handle = params.handle;
 
+  // If handle is missing, return E-08 error
   if (!handle) {
-    return new Response(
-      JSON.stringify({ error: "Unable to load SEO data right now. Please try again." }),
-      { status: 400, headers: { "Content-Type": "application/json" } }
-    );
+    const errorBody = JSON.stringify({
+      error: "Unable to load SEO data right now. Please try again.",
+    });
+    return new Response(errorBody, {
+      status: 400,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 
+  // Step 3: Ask Shopify for the product's SEO fields only
+  // We only fetch id, handle, and seo — nothing else (keeps it lightweight)
   try {
-    // Use products query with handle filter — productByHandle is deprecated
     const response = await admin.graphql(
-      `
-      query ProductSeo($handle: String!) {
+      `query ProductSeo($handle: String!) {
         products(first: 1, query: $handle) {
           nodes {
             id
@@ -39,33 +57,50 @@ export async function loader({ request, params }) {
             }
           }
         }
-      }
-      `,
-      { variables: { handle: `handle:${handle}` } }
+      }`,
+      { variables: { handle: "handle:" + handle } }
     );
 
     const result = await response.json();
     const product = result.data.products.nodes[0];
 
+    // If no product found, return E-08 error
     if (!product) {
-      return new Response(
-        JSON.stringify({ error: "Unable to load SEO data right now. Please try again." }),
-        { status: 404, headers: { "Content-Type": "application/json" } }
-      );
+      const errorBody = JSON.stringify({
+        error: "Unable to load SEO data right now. Please try again.",
+      });
+      return new Response(errorBody, {
+        status: 404,
+        headers: { "Content-Type": "application/json" },
+      });
     }
 
-    return Response.json({
+    // Step 4: Return the SEO data as JSON to SeoTab
+    // SeoTab reads: data.handle, data.seo.title, data.seo.description
+    const seoTitle = product.seo ? product.seo.title : "";
+    const seoDescription = product.seo ? product.seo.description : "";
+
+    const responseBody = JSON.stringify({
       handle: product.handle,
       seo: {
-        title: product.seo?.title || "",
-        description: product.seo?.description || "",
+        title: seoTitle || "",
+        description: seoDescription || "",
       },
     });
-  } catch {
-    // E-08
-    return new Response(
-      JSON.stringify({ error: "Unable to load SEO data right now. Please try again." }),
-      { status: 500, headers: { "Content-Type": "application/json" } }
-    );
+
+    return new Response(responseBody, {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+
+  } catch (error) {
+    // Something went wrong talking to Shopify — return E-08 error
+    const errorBody = JSON.stringify({
+      error: "Unable to load SEO data right now. Please try again.",
+    });
+    return new Response(errorBody, {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 }
